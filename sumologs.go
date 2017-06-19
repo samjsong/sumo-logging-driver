@@ -20,9 +20,8 @@ const (
 	logOptUrl = "sumo-url"
 
 	defaultFrequency = 5 * time.Second
-	defaultBatchSize = 1000
-	defaultBufferSize = 10 * defaultBatchSize
-	defaultStreamSize = 4 * defaultBatchSize
+	defaultBufferSize = 10000
+	defaultStreamSize = 4000
 )
 
 type sumoLogger struct {
@@ -58,7 +57,6 @@ func New(info logger.Info) (logger.Logger, error) {
 
 	// can allow users to configure these variables in future
 	frequency := defaultFrequency
-	batchSize := defaultBatchSize
 	bufferSize := defaultBufferSize
 	streamSize := defaultStreamSize
 
@@ -67,7 +65,6 @@ func New(info logger.Info) (logger.Logger, error) {
 		httpSourceUrl: httpSourceUrl,
 		messageStream: make(chan string, streamSize),
 		frequency: frequency,
-		batchSize: batchSize,
 		bufferSize: bufferSize,
 	}
 
