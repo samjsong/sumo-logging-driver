@@ -63,7 +63,7 @@ func New(info logger.Info) (logger.Logger, error) {
 	streamSize := defaultStreamSize
 
 	s := &sumoLogger{
-		client: &http.Client{}
+		client: &http.Client{},
 		httpSourceUrl: httpSourceUrl,
 		messageStream: make(chan string, streamSize),
 		frequency: frequency,
@@ -101,10 +101,7 @@ func (s *sumoLogger) waitForMessages() {
 				return
 			}
 			messages = append(messages, message)
-			// maybe check if multiline is done, then send as one log.
-			if len(messages) % s.batchSize == 0 {
-				messages = s.sendMessages(messages, false)
-			}
+			messages = s.sendMessages(messages, false)
 		}
 	}
 }
@@ -122,13 +119,8 @@ func (s *sumoLogger) Log(msg *logger.Message) error {
 
 func (s *sumoLogger) sendMessages(messages []string, driverClosed bool) []string {
 	messagesCount := len(messages)
-	for i := 0; i < messagesCount; i += s.batchSize {
-		upperBound := i + s.batchSize
-		if upperBound > messagesCount {
-			upperBound = messagesCount
-		}
-		messagesToSend := messages[i:upperBound]
-		if err := s.trySendMessages(messagesToSend); err != nil {
+	for i := 0; i < messagesCount; i += 1 {
+		if err := s.trySendMessage(messages[i]); err != nil {
 			// failed to send the messages
 			// TODO: if the driver is closed or the buffer is full, then need to do something with the logs
 			logrus.Error(err)
@@ -138,35 +130,30 @@ func (s *sumoLogger) sendMessages(messages []string, driverClosed bool) []string
 	return messages[:0]
 }
 
-func (s *sumoLogger) trySendMessages(messages []string) error {
-	if len(messages) == 0 {
-		return nil
-	}
+func (s *sumoLogger) trySendMessage(message string) error {
 	// TODO: this function in general can probably be cleaned up,
 	//		need to update this function and sendMessages to do multiline detection.
 	//		currently, it sends each message one at a time, and so "batch size" is irrelevant.
 	//		need to figure out what the best design for sending messages is.
 	//		SEE: todo in waitForMessages()
-	for _, message := range messages {
-		req, err := http.NewRequest("POST", s.httpSourceUrl, bytes.NewBuffer([]byte(message)))
-		if err != nil {
-			return err
-		}
-		res, err := s.client.Do(req)
-		if err != nil {
-			return err
-		}
-		defer res.Body.Close()
-		if res.StatusCode != http.StatusOK {
-			var body []byte
-			body, err = ioutil.ReadAll(res.Body)
-			if err != nil {
-				return err
-			}
-			return fmt.Errorf("%s: failed to send event - %s - %s", driverName, res.Status, body)
-		}
-		io.Copy(ioutil.Discard, res.Body)
+	req, err := http.NewRequest("POST", s.httpSourceUrl, bytes.NewBuffer([]byte(message)))
+	if err != nil {
+		return err
 	}
+	res, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		var body []byte
+		body, err = ioutil.ReadAll(res.Body)
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("%s: failed to send event - %s - %s", driverName, res.Status, body)
+	}
+	io.Copy(ioutil.Discard, res.Body)
 	return nil
 }
 
