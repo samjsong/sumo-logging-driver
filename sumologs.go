@@ -56,7 +56,7 @@ func New(info logger.Info) (logger.Logger, error) {
 		return nil, fmt.Errorf("%s: %s is required", driverName, logOptUrl)
 	}
 
-	// can allow users to configure these variables in the future
+	// can allow users to configure these variables in future
 	frequency := defaultFrequency
 	batchSize := defaultBatchSize
 	bufferSize := defaultBufferSize
