@@ -30,9 +30,7 @@ type sumoLogger struct {
 	httpSourceUrl string
 
 	frequency  time.Duration
-	batchSize  int
 	bufferSize int
-	streamSize int
 
 	messageStream chan string
 	mu            sync.RWMutex
