@@ -115,13 +115,21 @@ func (s *sumoLogger) Log(msg *logger.Message) error {
 }
 
 func (s *sumoLogger) sendMessages(messages []string, driverClosed bool) []string {
-	messagesCount := len(messages)
-	for i := 0; i < messagesCount; i += 1 {
+	messageCount := len(messages)
+	for i := 0; i < messageCount; i += 1 {
 		if err := s.trySendMessage(messages[i]); err != nil {
-			// failed to send the messages
-			// TODO: if the driver is closed or the buffer is full, then need to do something with the logs
 			logrus.Error(err)
-			return messages[i:messagesCount]
+			if driverClosed {
+				for j := i; j < messageCount; j++ {
+					logrus.Error(fmt.Errorf("%s: Failed to send message: '%s'", driverName, messages[j]))
+				}
+				return messages[:0]
+			}
+			if messageCount - i >= s.bufferSize {
+				logrus.Error(fmt.Errorf("%s: Failed to send message: '%s'", driverName, messages[i]))
+				return messages[i+1:messageCount]
+			}
+			return messages[i:messageCount]
 		}
 	}
 	return messages[:0]
