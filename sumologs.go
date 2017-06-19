@@ -131,11 +131,6 @@ func (s *sumoLogger) sendMessages(messages []string, driverClosed bool) []string
 }
 
 func (s *sumoLogger) trySendMessage(message string) error {
-	// TODO: this function in general can probably be cleaned up,
-	//		need to update this function and sendMessages to do multiline detection.
-	//		currently, it sends each message one at a time, and so "batch size" is irrelevant.
-	//		need to figure out what the best design for sending messages is.
-	//		SEE: todo in waitForMessages()
 	req, err := http.NewRequest("POST", s.httpSourceUrl, bytes.NewBuffer([]byte(message)))
 	if err != nil {
 		return err
