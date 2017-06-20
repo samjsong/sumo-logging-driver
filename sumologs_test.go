@@ -4,6 +4,8 @@ import (
 	"bytes"
 	// "fmt"
 	"net/http"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,6 +23,14 @@ const (
 	sumoUrlMock = "https://fake.sumo.Url"
 	badUrl = "https://bad.Url"
 )
+
+func captureOutput(f func()) string {
+    var buf bytes.Buffer
+    logrus.SetOutput(&buf)
+    f()
+    logrus.SetOutput(os.Stderr)
+    return buf.String()
+}
 
 func TestValidateLogOpt(t *testing.T) {
 	assert := assert.New(t)
@@ -141,21 +151,19 @@ func TestDefaultSettingsBadUrl(t *testing.T) {
 
 	msgStrings := []string{"hello", "", "This is a log with\na 2nd line and a #!"}
 
-	// TODO: need to able to test for these error messages printed through logrus.
-	//		tried logrus's test package, rerouting log, creating fake logger (in sumologs.go, which isn't very clean anyway)
+	logrusErrors := captureOutput(func() {
+		for _, msgString := range msgStrings {
+			msg := &logger.Message{Line: []byte(msgString), Source: "stdout", Timestamp: time.Now()}
+			err := s.Log(msg)
+			assert.Nil(err, "should not fail when calling Log(). sent %s", msgString)
+		}
+		err = s.Close()
+		assert.Nil(err, "should not fail when calling Close()")
+	})
 
-	logrus.Info("EXPECT errors to print to stdout - because cannot POST to bad URL.")
-	logrus.Info("HOWEVER calls to Log() and Close() should not fail. Should just report error to logrus.")
-
-	var msg *logger.Message
-	for _, msgString := range msgStrings {
-		msg = &logger.Message{Line: []byte(msgString), Source: "stdout", Timestamp: time.Now()}
-		err = s.Log(msg)
-		assert.Nil(err, "should not fail when calling Log(). sent %s", msgString)
-	}
-
-	err = s.Close()
-	assert.Nil(err, "should not fail when calling Close()")
+	assert.NotNil(logrusErrors, "should have gotten an output through logrus when trying to log to a bad URL")
+	assert.NotEqual(0, strings.Count(logrusErrors, "error"), "should have at least one error message when trying to log to a bad URL")
+	assert.Equal(3, strings.Count(logrusErrors, driverName), "should have exactly 3 error messages referencing %s, one for each failed message", driverName)
 
 	assert.Equal(0, len(messages), "should have received none of the logs")
 }
