@@ -2,7 +2,7 @@ package sumologs
 
 import (
 	"bytes"
-	"fmt"
+	// "fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -75,8 +75,6 @@ func TestDefaultSettings(t *testing.T) {
 
 	httpmock.RegisterResponder("POST", sumoUrlMock,
 		func(req *http.Request) (*http.Response, error) {
-			fmt.Println("got the request")
-
 			buf := new(bytes.Buffer)
 			buf.ReadFrom(req.Body)
 			message := buf.String()
@@ -122,8 +120,6 @@ func TestDefaultSettingsBadUrl(t *testing.T) {
 
 	httpmock.RegisterResponder("POST", sumoUrlMock,
 		func(req *http.Request) (*http.Response, error) {
-			fmt.Println("got the request")
-
 			buf := new(bytes.Buffer)
 			buf.ReadFrom(req.Body)
 			message := buf.String()

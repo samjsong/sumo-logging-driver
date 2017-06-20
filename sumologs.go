@@ -5,7 +5,6 @@ package sumologs
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"sync"
@@ -53,7 +52,7 @@ func New(info logger.Info) (logger.Logger, error) {
 		return nil, fmt.Errorf("%s: %s is required", driverName, logOptUrl)
 	}
 
-	// can allow users to configure these variables in future
+	// TODO: allow users to configure these variables in future
 	frequency := defaultFrequency
 	bufferSize := defaultBufferSize
 	streamSize := defaultStreamSize
@@ -117,18 +116,9 @@ func (s *sumoLogger) sendMessages(messages []string, driverClosed bool) []string
 	for i := 0; i < messageCount; i += 1 {
 		if err := s.trySendMessage(messages[i]); err != nil {
 			logrus.Error(err)
-
-			if driverClosed {
-				for j := i; j < messageCount; j++ {
-					logrus.Error(fmt.Errorf("%s: Failed to send message:\n'%s'\nin time. REASON: Driver is closed.", driverName, messages[j]))
-				}
-				return messages[messageCount:messageCount]
-			}
-			if messageCount - i >= s.bufferSize {
-				for j := i; j < messageCount - s.bufferSize; j++ {
-					logrus.Error(fmt.Errorf("%s: Failed to send message:\n'%s'\nin time. REASON: Buffer was full.", driverName, messages[j]))
-				}
-				return messages[messageCount - s.bufferSize:messageCount]
+			if driverClosed || messageCount - i >= s.bufferSize {
+				messagesToRetry := s.logFailedMessages(messages[i:messageCount], driverClosed)
+				return messagesToRetry
 			}
 			return messages[i:messageCount]
 		}
@@ -154,8 +144,24 @@ func (s *sumoLogger) trySendMessage(message string) error {
 		}
 		return fmt.Errorf("%s: failed to send event - %s - %s", driverName, res.Status, body)
 	}
-	io.Copy(ioutil.Discard, res.Body)
 	return nil
+}
+
+func (s *sumoLogger) logFailedMessages(messages []string, driverClosed bool) []string {
+	messageCount := len(messages)
+	var failedMessagesUpperBound int
+	var reason string
+	if driverClosed {
+		failedMessagesUpperBound = messageCount
+		reason = "Driver is closed"
+	} else {
+		failedMessagesUpperBound = messageCount - s.bufferSize
+		reason = "Buffer was full"
+	}
+	for i := 0; i < failedMessagesUpperBound; i++ {
+		logrus.Error(fmt.Errorf("%s: Failed to send message:\n'%s'\nin time. REASON: %s.", driverName, messages[i], reason))
+	}
+	return messages[failedMessagesUpperBound:messageCount]
 }
 
 func ValidateLogOpt(cfg map[string]string) error {
