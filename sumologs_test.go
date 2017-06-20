@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/sirupsen/logrus"
 
 	"github.com/docker/docker/daemon/logger"
 
@@ -52,7 +53,7 @@ func TestNew(t *testing.T) {
 	t.Run("configured correctly", func(t *testing.T) {
 		info := logger.Info{
 			Config: map[string]string{
-				"sumo-url" : sumoUrl,
+				logOptUrl : sumoUrl,
 			},
 		}
 
@@ -86,7 +87,7 @@ func TestDefaultSettings(t *testing.T) {
 	)
 	info := logger.Info{
 		Config: map[string]string{
-			"sumo-url" : sumoUrlMock,
+			logOptUrl : sumoUrlMock,
 		},
 	}
 
@@ -131,7 +132,7 @@ func TestDefaultSettingsBadUrl(t *testing.T) {
 	)
 	info := logger.Info{
 		Config: map[string]string{
-			"sumo-url" : badUrl,
+			logOptUrl : badUrl,
 		},
 	}
 
@@ -139,6 +140,12 @@ func TestDefaultSettingsBadUrl(t *testing.T) {
 	assert.Nil(err, "should not fail when calling New()")
 
 	msgStrings := []string{"hello", "", "This is a log with\na 2nd line and a #!"}
+
+	// TODO: need to able to test for these error messages printed through logrus.
+	//		tried logrus's test package, rerouting log, creating fake logger (in sumologs.go, which isn't very clean anyway)
+
+	logrus.Info("EXPECT errors to print to stdout - because cannot POST to bad URL.")
+	logrus.Info("HOWEVER calls to Log() and Close() should not fail. Should just report error to logrus.")
 
 	var msg *logger.Message
 	for _, msgString := range msgStrings {

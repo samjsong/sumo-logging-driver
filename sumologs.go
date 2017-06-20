@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/docker/docker/daemon/logger"
 )
 
@@ -72,7 +72,6 @@ func New(info logger.Info) (logger.Logger, error) {
 
 func (s *sumoLogger) waitForMessages() {
 	// TODO: Eventually multiline detection should probably happen here...
-	//		Might get rid of ticker and send messages immediately instead
 	// TODO: Discuss design, should we send messages in batches? Fewer http requests
 	//		but could potentially send unrelated messages as a single log.
 	//		Potential solution would involve changing things on the http-source side,
@@ -117,7 +116,7 @@ func (s *sumoLogger) sendMessages(messages []string, driverClosed bool) []string
 		if err := s.trySendMessage(messages[i]); err != nil {
 			logrus.Error(err)
 			if driverClosed || messageCount - i >= s.bufferSize {
-				messagesToRetry := s.logFailedMessages(messages[i:messageCount], driverClosed)
+				messagesToRetry := s.notifyFailedMessages(messages[i:messageCount], driverClosed)
 				return messagesToRetry
 			}
 			return messages[i:messageCount]
@@ -127,27 +126,26 @@ func (s *sumoLogger) sendMessages(messages []string, driverClosed bool) []string
 }
 
 func (s *sumoLogger) trySendMessage(message string) error {
-	req, err := http.NewRequest("POST", s.httpSourceUrl, bytes.NewBuffer([]byte(message)))
+	request, err := http.NewRequest("POST", s.httpSourceUrl, bytes.NewBuffer([]byte(message)))
 	if err != nil {
 		return err
 	}
-	res, err := s.client.Do(req)
+	response, err := s.client.Do(request)
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		var body []byte
-		body, err = ioutil.ReadAll(res.Body)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		body, err := ioutil.ReadAll(response.Body)
 		if err != nil {
 			return err
 		}
-		return fmt.Errorf("%s: failed to send event - %s - %s", driverName, res.Status, body)
+		return fmt.Errorf("%s: failed to send event - %s - %s", driverName, response.Status, body)
 	}
 	return nil
 }
 
-func (s *sumoLogger) logFailedMessages(messages []string, driverClosed bool) []string {
+func (s *sumoLogger) notifyFailedMessages(messages []string, driverClosed bool) []string {
 	messageCount := len(messages)
 	var failedMessagesUpperBound int
 	var reason string
