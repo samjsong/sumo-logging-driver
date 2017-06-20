@@ -52,7 +52,7 @@ func TestValidateLogOpt(t *testing.T) {
 
 func TestNew(t *testing.T) {
 	assert := assert.New(t)
-	t.Run("missing sumo-url", func(t *testing.T) {
+	t.Run("Missing sumo-url", func(t *testing.T) {
 		info := logger.Info{
 			Config: map[string]string{},
 		}
@@ -60,7 +60,7 @@ func TestNew(t *testing.T) {
 
 		assert.NotNil(err, "should fail when sumo-url not provided")
 	})
-	t.Run("configured correctly", func(t *testing.T) {
+	t.Run("Configured correctly", func(t *testing.T) {
 		info := logger.Info{
 			Config: map[string]string{
 				logOptUrl : sumoUrl,
@@ -95,75 +95,65 @@ func TestDefaultSettings(t *testing.T) {
 			return resp, nil
 		},
 	)
-	info := logger.Info{
-		Config: map[string]string{
-			logOptUrl : sumoUrlMock,
-		},
-	}
 
-	s, err := New(info)
-	assert.Nil(err, "should not fail when calling New()")
+	t.Run("Good URL", func(t *testing.T) {
+		info := logger.Info{
+			Config: map[string]string{
+				logOptUrl : sumoUrlMock,
+			},
+		}
 
-	msgStrings := []string{"hello", "", "This is a log with\na 2nd line and a #!"}
+		s, err := New(info)
+		assert.Nil(err, "should not fail when calling New()")
 
-	var msg *logger.Message
-	for _, msgString := range msgStrings {
-		msg = &logger.Message{Line: []byte(msgString), Source: "stdout", Timestamp: time.Now()}
-		err = s.Log(msg)
-		assert.Nil(err, "should not fail when calling Log(). sent %s", msgString)
-	}
+		msgStrings := []string{"hello", "", "This is a log with\na 2nd line and a #!"}
 
-	err = s.Close()
-	assert.Nil(err, "should not fail when calling Close()")
-
-	assert.Equal(3, len(messages), "should have received 3 logs")
-	for i := 0; i < 3; i++ {
-		assert.Equal(msgStrings[i], messages[i], "message is incorrect")
-	}
-}
-
-func TestDefaultSettingsBadUrl(t *testing.T) {
-	assert := assert.New(t)
-	httpmock.Activate()
-	defer httpmock.DeactivateAndReset()
-
-	var messages []string
-
-	httpmock.RegisterResponder("POST", sumoUrlMock,
-		func(req *http.Request) (*http.Response, error) {
-			buf := new(bytes.Buffer)
-			buf.ReadFrom(req.Body)
-			message := buf.String()
-
-			messages = append(messages, message)
-			resp := httpmock.NewStringResponse(200, message)
-			return resp, nil
-		},
-	)
-	info := logger.Info{
-		Config: map[string]string{
-			logOptUrl : badUrl,
-		},
-	}
-
-	s, err := New(info)
-	assert.Nil(err, "should not fail when calling New()")
-
-	msgStrings := []string{"hello", "", "This is a log with\na 2nd line and a #!"}
-
-	logrusErrors := captureOutput(func() {
+		var msg *logger.Message
 		for _, msgString := range msgStrings {
-			msg := &logger.Message{Line: []byte(msgString), Source: "stdout", Timestamp: time.Now()}
-			err := s.Log(msg)
+			msg = &logger.Message{Line: []byte(msgString), Source: "stdout", Timestamp: time.Now()}
+			err = s.Log(msg)
 			assert.Nil(err, "should not fail when calling Log(). sent %s", msgString)
 		}
+
 		err = s.Close()
 		assert.Nil(err, "should not fail when calling Close()")
+
+		assert.Equal(3, len(messages), "should have received 3 logs")
+		for i := 0; i < 3; i++ {
+			assert.Equal(msgStrings[i], messages[i], "message is incorrect")
+		}
+		
+		messages = messages[:0]
 	})
 
-	assert.NotNil(logrusErrors, "should have gotten an output through logrus when trying to log to a bad URL")
-	assert.NotEqual(0, strings.Count(logrusErrors, "error"), "should have at least one error message when trying to log to a bad URL")
-	assert.Equal(3, strings.Count(logrusErrors, driverName), "should have exactly 3 error messages referencing %s, one for each failed message", driverName)
+	t.Run("Bad URL", func(t *testing.T) {
+		info := logger.Info{
+			Config: map[string]string{
+				logOptUrl : badUrl,
+			},
+		}
 
-	assert.Equal(0, len(messages), "should have received none of the logs")
+		s, err := New(info)
+		assert.Nil(err, "should not fail when calling New()")
+
+		msgStrings := []string{"hello", "", "This is a log with\na 2nd line and a #!"}
+
+		logrusErrors := captureOutput(func() {
+			for _, msgString := range msgStrings {
+				msg := &logger.Message{Line: []byte(msgString), Source: "stdout", Timestamp: time.Now()}
+				err := s.Log(msg)
+				assert.Nil(err, "should not fail when calling Log(). sent %s", msgString)
+			}
+			err = s.Close()
+			assert.Nil(err, "should not fail when calling Close()")
+		})
+
+		assert.NotNil(logrusErrors, "should have gotten an output through logrus when trying to log to a bad URL")
+		assert.NotEqual(0, strings.Count(logrusErrors, "error"), "should have at least one error message when trying to log to a bad URL")
+		assert.Equal(3, strings.Count(logrusErrors, driverName), "should have exactly 3 error messages referencing %s, one for each failed message", driverName)
+
+		assert.Equal(0, len(messages), "should have received none of the logs")
+
+		messages = messages[:0]
+	})
 }
