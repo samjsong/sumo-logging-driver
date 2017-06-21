@@ -4,6 +4,7 @@ package sumologs
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -12,11 +13,13 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/docker/docker/daemon/logger"
+	"github.com/docker/docker/daemon/logger/loggerutils"
 )
 
 const (
 	driverName = "sumologs"
 	logOptUrl = "sumo-url"
+	logOptTag = "tag"
 
 	defaultFrequency = 5 * time.Second
 	defaultBufferSize = 10000
@@ -24,7 +27,11 @@ const (
 )
 
 type sumoMessage struct {
-	Line string
+	Line   string `json:"line"`
+	Host   string `json:"host"`
+	Source string `json:"source"`
+	Tag    string `json:"tag,omitempty"`
+	Time   string `json:"time"`
 }
 
 type sumoLogger struct {
@@ -53,12 +60,28 @@ func init() {
 }
 
 func New(info logger.Info) (logger.Logger, error) {
-	httpSourceUrl, ok := info.Config[logOptUrl]
-	if !ok {
+	hostname, err := info.Hostname()
+	if err != nil {
+		return nil, fmt.Errorf("%s: cannot access hostname to set source field", driverName)
+	}
+
+	httpSourceUrl, exists := info.Config[logOptUrl]
+	if !exists {
 		return nil, fmt.Errorf("%s: log-opt '%s' is required", driverName, logOptUrl)
 	}
 
-	blankMessage := &sumoMessage{}
+	tag := ""
+	if tagTemplate, exists := info.Config[logOptTag]; !exists || tagTemplate != "" {
+		tag, err = loggerutils.ParseLogTag(info, loggerutils.DefaultTemplate)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	blankMessage := &sumoMessage{
+		Host: hostname,
+		Tag: tag,
+	}
 
 	// TODO: allow users to configure these variables in future
 	frequency := defaultFrequency
@@ -117,6 +140,8 @@ func (s *sumoLogger) Log(msg *logger.Message) error {
 
 	message := *s.blankMessage
 	message.Line = string(msg.Line)
+	message.Time = fmt.Sprintf("%f", float64(msg.Timestamp.UnixNano())/float64(time.Second))
+	message.Source = msg.Source
 
 	s.messageStream <- &message
 	logger.PutMessage(msg)
@@ -139,7 +164,12 @@ func (s *sumoLogger) sendMessages(messages []*sumoMessage, driverClosed bool) []
 }
 
 func (s *sumoLogger) trySendMessage(message *sumoMessage) error {
-	request, err := http.NewRequest("POST", s.httpSourceUrl, bytes.NewBuffer([]byte(message.Line)))
+	jsonEvent, err := json.Marshal(message)
+	if err != nil {
+		return err
+	}
+
+	request, err := http.NewRequest("POST", s.httpSourceUrl, bytes.NewBuffer([]byte(jsonEvent)))
 	if err != nil {
 		return err
 	}
@@ -164,7 +194,7 @@ func (s *sumoLogger) notifyFailedMessages(messages []*sumoMessage, driverClosed 
 	var reason string
 	if driverClosed {
 		failedMessagesUpperBound = messageCount
-		reason = "driver is closed"
+		reason = "driver was closed"
 	} else {
 		failedMessagesUpperBound = messageCount - s.bufferSize
 		reason = "buffer was full"
@@ -182,6 +212,7 @@ func ValidateLogOpt(cfg map[string]string) error {
 			if cfg[key] == "" {
 				return fmt.Errorf("%s: log-opt '%s' cannot be empty", driverName, key)
 			}
+		case logOptTag:
 		case "labels":
 		case "env":
 		case "env-regex":

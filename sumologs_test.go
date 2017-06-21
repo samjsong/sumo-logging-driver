@@ -55,6 +55,10 @@ func TestNew(t *testing.T) {
 	t.Run("Missing option: " + logOptUrl, func(t *testing.T) {
 		info := logger.Info{
 			Config: map[string]string{},
+			ContainerID:        "containeriid",
+			ContainerName:      "/container_name",
+			ContainerImageID:   "contaimageid",
+			ContainerImageName: "container_image_name",
 		}
 		_, err := New(info)
 
@@ -65,6 +69,10 @@ func TestNew(t *testing.T) {
 			Config: map[string]string{
 				logOptUrl : sumoUrl,
 			},
+			ContainerID:        "containeriid",
+			ContainerName:      "/container_name",
+			ContainerImageID:   "contaimageid",
+			ContainerImageName: "container_image_name",
 		}
 
 		s, err := New(info)
@@ -101,12 +109,16 @@ func TestIntegrationTestsDefaultSettings(t *testing.T) {
 			Config: map[string]string{
 				logOptUrl : sumoUrlMock,
 			},
+			ContainerID:        "containeriid",
+			ContainerName:      "/container_name",
+			ContainerImageID:   "contaimageid",
+			ContainerImageName: "container_image_name",
 		}
 
 		s, err := New(info)
 		assert.Nil(err, "should not fail when calling New()")
 
-		msgStrings := []string{"hello", "", "This is a log with\na 2nd line and a #!", "1234567890"}
+		msgStrings := []string{"hello", "", "This a more advanced log, with `$`@`!``(#*)'' and #1!           ", "1234567890"}
 
 		var msg *logger.Message
 		for _, msgString := range msgStrings {
@@ -121,7 +133,8 @@ func TestIntegrationTestsDefaultSettings(t *testing.T) {
 		expectedMessageCount := len(msgStrings)
 		assert.Equal(expectedMessageCount, len(messages), "should have received %d logs", expectedMessageCount)
 		for i := 0; i < expectedMessageCount; i++ {
-			assert.Equal(msgStrings[i], messages[i], "message is incorrect")
+			// assert.Equal(msgStrings[i], messages[i], "message is incorrect")
+			assert.Contains(messages[i], "\"" + msgStrings[i] + "\"", "message should contain message string")
 		}
 
 		messages = messages[:0]
@@ -132,12 +145,16 @@ func TestIntegrationTestsDefaultSettings(t *testing.T) {
 			Config: map[string]string{
 				logOptUrl : badUrl,
 			},
+			ContainerID:        "containeriid",
+			ContainerName:      "/container_name",
+			ContainerImageID:   "contaimageid",
+			ContainerImageName: "container_image_name",
 		}
 
 		s, err := New(info)
 		assert.Nil(err, "should not fail when calling New()")
 
-		msgStrings := []string{"hello", "", "This is a log with\na 2nd line and a #!"}
+		msgStrings := []string{"hello", "", "This a more advanced log, with `$`@`!``(#*)'' and #1!           "}
 
 		logrusErrors := captureOutput(func() {
 			for _, msgString := range msgStrings {
