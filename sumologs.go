@@ -23,6 +23,10 @@ const (
 	defaultStreamSize = 4000
 )
 
+type sumoMessage struct {
+	Line string
+}
+
 type sumoLogger struct {
 	client    *http.Client
 	
@@ -31,7 +35,9 @@ type sumoLogger struct {
 	frequency  time.Duration
 	bufferSize int
 
-	messageStream chan string
+	blankMessage  *sumoMessage
+	messageStream chan *sumoMessage
+	
 	mu            sync.RWMutex
 	readyToClose  bool
 	closedCond    *sync.Cond
@@ -49,8 +55,10 @@ func init() {
 func New(info logger.Info) (logger.Logger, error) {
 	httpSourceUrl, ok := info.Config[logOptUrl]
 	if !ok {
-		return nil, fmt.Errorf("%s: %s is required", driverName, logOptUrl)
+		return nil, fmt.Errorf("%s: log-opt '%s' is required", driverName, logOptUrl)
 	}
+
+	blankMessage := &sumoMessage{}
 
 	// TODO: allow users to configure these variables in future
 	frequency := defaultFrequency
@@ -60,7 +68,8 @@ func New(info logger.Info) (logger.Logger, error) {
 	s := &sumoLogger{
 		client: &http.Client{},
 		httpSourceUrl: httpSourceUrl,
-		messageStream: make(chan string, streamSize),
+		blankMessage: blankMessage,
+		messageStream: make(chan *sumoMessage, streamSize),
 		frequency: frequency,
 		bufferSize: bufferSize,
 	}
@@ -79,7 +88,7 @@ func (s *sumoLogger) waitForMessages() {
 	//		cause complications with multiline detection. Probably easier to just send
 	//		one message per log.
 	timer := time.NewTicker(s.frequency)
-	var messages []string
+	var messages []*sumoMessage
 	for {
 		select {
 		case <-timer.C:
@@ -103,14 +112,18 @@ func (s *sumoLogger) Log(msg *logger.Message) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.closedCond != nil {
-		return fmt.Errorf("%s: driver is closed", driverName)
+		return fmt.Errorf("Driver is closed")
 	}
-	s.messageStream <- string(msg.Line)
+
+	message := *s.blankMessage
+	message.Line = string(msg.Line)
+
+	s.messageStream <- &message
 	logger.PutMessage(msg)
 	return nil
 }
 
-func (s *sumoLogger) sendMessages(messages []string, driverClosed bool) []string {
+func (s *sumoLogger) sendMessages(messages []*sumoMessage, driverClosed bool) []*sumoMessage {
 	messageCount := len(messages)
 	for i := 0; i < messageCount; i += 1 {
 		if err := s.trySendMessage(messages[i]); err != nil {
@@ -125,8 +138,8 @@ func (s *sumoLogger) sendMessages(messages []string, driverClosed bool) []string
 	return messages[:0]
 }
 
-func (s *sumoLogger) trySendMessage(message string) error {
-	request, err := http.NewRequest("POST", s.httpSourceUrl, bytes.NewBuffer([]byte(message)))
+func (s *sumoLogger) trySendMessage(message *sumoMessage) error {
+	request, err := http.NewRequest("POST", s.httpSourceUrl, bytes.NewBuffer([]byte(message.Line)))
 	if err != nil {
 		return err
 	}
@@ -140,24 +153,24 @@ func (s *sumoLogger) trySendMessage(message string) error {
 		if err != nil {
 			return err
 		}
-		return fmt.Errorf("%s: failed to send event - %s - %s", driverName, response.Status, body)
+		return fmt.Errorf("%s: Failed to send event: %s - %s", driverName, response.Status, body)
 	}
 	return nil
 }
 
-func (s *sumoLogger) notifyFailedMessages(messages []string, driverClosed bool) []string {
+func (s *sumoLogger) notifyFailedMessages(messages []*sumoMessage, driverClosed bool) []*sumoMessage {
 	messageCount := len(messages)
 	var failedMessagesUpperBound int
 	var reason string
 	if driverClosed {
 		failedMessagesUpperBound = messageCount
-		reason = "Driver is closed"
+		reason = "driver is closed"
 	} else {
 		failedMessagesUpperBound = messageCount - s.bufferSize
-		reason = "Buffer was full"
+		reason = "buffer was full"
 	}
 	for i := 0; i < failedMessagesUpperBound; i++ {
-		logrus.Error(fmt.Errorf("%s: Failed to send message:\n'%s'\nin time. REASON: %s.", driverName, messages[i], reason))
+		logrus.Error(fmt.Errorf("%s: Failed to send message: '%s' in time. REASON: POST request failed, and %s.", driverName, messages[i].Line, reason))
 	}
 	return messages[failedMessagesUpperBound:messageCount]
 }
@@ -167,13 +180,13 @@ func ValidateLogOpt(cfg map[string]string) error {
 		switch key {
 		case logOptUrl:
 			if cfg[key] == "" {
-				return fmt.Errorf("%s: log-opt %s cannot be empty", driverName, key)
+				return fmt.Errorf("%s: log-opt '%s' cannot be empty", driverName, key)
 			}
 		case "labels":
 		case "env":
 		case "env-regex":
 		default:
-			return fmt.Errorf("%s: unknown log-opt '%s'", driverName, key)
+			return fmt.Errorf("%s: Unknown log-opt '%s'", driverName, key)
 		}
 	}
 	return nil

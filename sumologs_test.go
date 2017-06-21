@@ -20,8 +20,8 @@ import (
 
 const (
 	sumoUrl = "https://stag-events.sumologic.net/receiver/v1/http/ZaVnC4dhaV27p86wEkCthvRI4IUASAom3K3-y2qQI8aLQuMKT8wL4yrXruk4ak1UUk10h4LY7-w9Jcb1yb7a5rSdx2-KkLN48eeyR6eqE17ygZut36dfJQ=="
-	sumoUrlMock = "https://fake.sumo.Url"
-	badUrl = "https://bad.Url"
+	sumoUrlMock = "https://good.fake.sumo.Url"
+	badUrl = "https://bad.fake.sumo.Url"
 )
 
 func captureOutput(f func()) string {
@@ -52,13 +52,13 @@ func TestValidateLogOpt(t *testing.T) {
 
 func TestNew(t *testing.T) {
 	assert := assert.New(t)
-	t.Run("Missing sumo-url", func(t *testing.T) {
+	t.Run("Missing option: " + logOptUrl, func(t *testing.T) {
 		info := logger.Info{
 			Config: map[string]string{},
 		}
 		_, err := New(info)
 
-		assert.NotNil(err, "should fail when sumo-url not provided")
+		assert.NotNil(err, "should fail when %s not provided", logOptUrl)
 	})
 	t.Run("Configured correctly", func(t *testing.T) {
 		info := logger.Info{
@@ -73,11 +73,11 @@ func TestNew(t *testing.T) {
 		assert.Equal(driverName, s.Name(), "name of logging driver is incorrect")
 		
 		err = s.Close()
-		assert.Nil(err, "should not fail when calling Close() on logger")
+		assert.Nil(err, "should not fail when calling Close() on logging driver")
 	})
 }
 
-func TestDefaultSettings(t *testing.T) {
+func TestIntegrationTestsDefaultSettings(t *testing.T) {
 	assert := assert.New(t)
 	httpmock.Activate()
 	defer httpmock.DeactivateAndReset()
@@ -106,7 +106,7 @@ func TestDefaultSettings(t *testing.T) {
 		s, err := New(info)
 		assert.Nil(err, "should not fail when calling New()")
 
-		msgStrings := []string{"hello", "", "This is a log with\na 2nd line and a #!"}
+		msgStrings := []string{"hello", "", "This is a log with\na 2nd line and a #!", "1234567890"}
 
 		var msg *logger.Message
 		for _, msgString := range msgStrings {
@@ -118,11 +118,12 @@ func TestDefaultSettings(t *testing.T) {
 		err = s.Close()
 		assert.Nil(err, "should not fail when calling Close()")
 
-		assert.Equal(3, len(messages), "should have received 3 logs")
-		for i := 0; i < 3; i++ {
+		expectedMessageCount := len(msgStrings)
+		assert.Equal(expectedMessageCount, len(messages), "should have received %d logs", expectedMessageCount)
+		for i := 0; i < expectedMessageCount; i++ {
 			assert.Equal(msgStrings[i], messages[i], "message is incorrect")
 		}
-		
+
 		messages = messages[:0]
 	})
 
@@ -148,9 +149,11 @@ func TestDefaultSettings(t *testing.T) {
 			assert.Nil(err, "should not fail when calling Close()")
 		})
 
+		expectedMessageCount := len(msgStrings)
 		assert.NotNil(logrusErrors, "should have gotten an output through logrus when trying to log to a bad URL")
 		assert.NotEqual(0, strings.Count(logrusErrors, "error"), "should have at least one error message when trying to log to a bad URL")
-		assert.Equal(3, strings.Count(logrusErrors, driverName), "should have exactly 3 error messages referencing %s, one for each failed message", driverName)
+		assert.Equal(expectedMessageCount, strings.Count(logrusErrors, driverName),
+			"should have exactly %d error messages referencing %s, one for each failed message", expectedMessageCount, driverName)
 
 		assert.Equal(0, len(messages), "should have received none of the logs")
 
