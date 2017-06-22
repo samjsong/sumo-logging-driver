@@ -20,8 +20,9 @@ import (
 
 const (
 	sumoUrl = "https://stag-events.sumologic.net/receiver/v1/http/ZaVnC4dhaV27p86wEkCthvRI4IUASAom3K3-y2qQI8aLQuMKT8wL4yrXruk4ak1UUk10h4LY7-w9Jcb1yb7a5rSdx2-KkLN48eeyR6eqE17ygZut36dfJQ=="
-	sumoUrlMock = "https://good.fake.sumo.Url"
-	badUrl = "https://bad.fake.sumo.Url"
+	sumoUrlMock = "https://good.fake.sumo.Url/v1/http/mySumoToken"
+	sumoUrlMockWrong = "https://bad.fake.sumo.Url/v1/http/wrongSumoToken"
+	badUrl = "https://bad.url.com/v2/http/sumoToken"
 )
 
 func captureOutput(f func()) string {
@@ -47,7 +48,12 @@ func TestValidateLogOpt(t *testing.T) {
 	err = ValidateLogOpt(map[string]string{
 		logOptUrl : "",
 	})
-	assert.NotNil(err, "should fail when user enters empty %s", logOptUrl)
+	assert.NotNil(err, "should fail when user enters empty string for %s", logOptUrl)
+
+	err = ValidateLogOpt(map[string]string{
+		logOptUrl : badUrl,
+	})
+	assert.NotNil(err, "should fail when user enters invalid %s", logOptUrl)
 }
 
 func TestNew(t *testing.T) {
@@ -143,7 +149,7 @@ func TestIntegrationTestsDefaultSettings(t *testing.T) {
 	t.Run("Bad URL", func(t *testing.T) {
 		info := logger.Info{
 			Config: map[string]string{
-				logOptUrl : badUrl,
+				logOptUrl : sumoUrlMockWrong,
 			},
 			ContainerID:        "containeriid",
 			ContainerName:      "/container_name",

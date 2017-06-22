@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"regexp"
 	"sync"
 	"time"
 
@@ -18,10 +19,10 @@ import (
 
 const (
 	driverName = "sumologs"
-	logOptUrl = "sumo-url"
-	logOptTag = "tag"
+	logOptUrl  = "sumo-url"
+	logOptTag  = "tag"
 
-	defaultFrequency = 5 * time.Second
+	defaultFrequency  = 5 * time.Second
 	defaultBufferSize = 10000
 	defaultStreamSize = 4000
 )
@@ -35,19 +36,19 @@ type sumoMessage struct {
 }
 
 type sumoLogger struct {
-	client    *http.Client
+	client         *http.Client
 	
-	httpSourceUrl string
+	httpSourceUrl  string
 
-	frequency  time.Duration
-	bufferSize int
+	frequency      time.Duration
+	bufferSize     int
 
-	blankMessage  *sumoMessage
-	messageStream chan *sumoMessage
+	blankMessage   *sumoMessage
+	messageStream  chan *sumoMessage
 	
-	mu            sync.RWMutex
-	readyToClose  bool
-	closedCond    *sync.Cond
+	mu             sync.RWMutex
+	readyToClose   bool
+	closedCond     *sync.Cond
 }
 
 func init() {
@@ -209,8 +210,12 @@ func ValidateLogOpt(cfg map[string]string) error {
 	for key := range cfg {
 		switch key {
 		case logOptUrl:
-			if cfg[key] == "" {
-				return fmt.Errorf("%s: log-opt '%s' cannot be empty", driverName, key)
+			r, err := regexp.Compile("(http|https)://.+/v1/http/.+")
+			if err != nil {
+				return err
+			}
+			if !r.MatchString(cfg[key]) {
+				return fmt.Errorf("%s: log-opt '%s' must be a valid HTTP source URL")
 			}
 		case logOptTag:
 		case "labels":
