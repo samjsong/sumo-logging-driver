@@ -25,6 +25,7 @@ const (
 	defaultFrequency  = 5 * time.Second
 	defaultBufferSize = 10000
 	defaultStreamSize = 4000
+	defaultBatchSize = 1000
 )
 
 type sumoMessage struct {
@@ -42,6 +43,7 @@ type sumoLogger struct {
 
 	frequency      time.Duration
 	bufferSize     int
+	batchSize      int
 
 	blankMessage   *sumoMessage
 	messageStream  chan *sumoMessage
@@ -88,6 +90,7 @@ func New(info logger.Info) (logger.Logger, error) {
 	frequency := defaultFrequency
 	bufferSize := defaultBufferSize
 	streamSize := defaultStreamSize
+	batchSize := defaultBatchSize
 
 	s := &sumoLogger{
 		client: &http.Client{},
@@ -96,6 +99,7 @@ func New(info logger.Info) (logger.Logger, error) {
 		messageStream: make(chan *sumoMessage, streamSize),
 		frequency: frequency,
 		bufferSize: bufferSize,
+		batchSize: batchSize,
 	}
 
 	go s.waitForMessages()
@@ -127,7 +131,9 @@ func (s *sumoLogger) waitForMessages() {
 				return
 			}
 			messages = append(messages, message)
-			messages = s.sendMessages(messages, false)
+			if len(messages) % s.batchSize == 0 {
+				messages = s.sendMessages(messages, false)
+			}
 		}
 	}
 }
@@ -151,8 +157,12 @@ func (s *sumoLogger) Log(msg *logger.Message) error {
 
 func (s *sumoLogger) sendMessages(messages []*sumoMessage, driverClosed bool) []*sumoMessage {
 	messageCount := len(messages)
-	for i := 0; i < messageCount; i += 1 {
-		if err := s.trySendMessage(messages[i]); err != nil {
+	for i := 0; i < messageCount; i += s.batchSize {
+		upperBound := i + s.batchSize
+		if upperBound > messageCount {
+			upperBound = messageCount
+		}
+		if err := s.trySendMessages(messages[i:upperBound]); err != nil {
 			logrus.Error(err)
 			if driverClosed || messageCount - i >= s.bufferSize {
 				messagesToRetry := s.notifyFailedMessages(messages[i:messageCount], driverClosed)
@@ -164,13 +174,22 @@ func (s *sumoLogger) sendMessages(messages []*sumoMessage, driverClosed bool) []
 	return messages[:0]
 }
 
-func (s *sumoLogger) trySendMessage(message *sumoMessage) error {
-	jsonEvent, err := json.Marshal(message)
-	if err != nil {
-		return err
+func (s *sumoLogger) trySendMessages(messages []*sumoMessage) error {
+	if len(messages) == 0 {
+		return nil
+	}
+	var writer bytes.Buffer
+	for _, message := range messages {
+			jsonEvent, err := json.Marshal(message)
+		if err != nil {
+			return err
+		}
+		if _, err := writer.Write(jsonEvent); err != nil {
+			return err
+		}
 	}
 
-	request, err := http.NewRequest("POST", s.httpSourceUrl, bytes.NewBuffer([]byte(jsonEvent)))
+	request, err := http.NewRequest("POST", s.httpSourceUrl, bytes.NewBuffer(writer.Bytes()))
 	if err != nil {
 		return err
 	}

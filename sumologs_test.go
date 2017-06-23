@@ -5,6 +5,7 @@ import (
 	// "fmt"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -102,11 +103,24 @@ func TestIntegrationTestsDefaultSettings(t *testing.T) {
 		func(req *http.Request) (*http.Response, error) {
 			buf := new(bytes.Buffer)
 			buf.ReadFrom(req.Body)
-			message := buf.String()
 
-			messages = append(messages, message)
-			resp := httpmock.NewStringResponse(200, message)
-			return resp, nil
+			messagesBatch := buf.Bytes()
+			regexMatchMessageEnd, err := regexp.Compile("}")
+			if err != nil {
+				return nil, err
+			}
+			messageBoundaryIndices := regexMatchMessageEnd.FindAllIndex(messagesBatch, -1)
+
+			messageStartIndex := 0
+			for _, i := range messageBoundaryIndices {
+				messageEndIndex := i[1]
+				message := string(messagesBatch[messageStartIndex : messageEndIndex])
+				messages = append(messages, message)
+				messageStartIndex = messageEndIndex
+			}
+
+			response := httpmock.NewStringResponse(200, buf.String())
+			return response, nil
 		},
 	)
 
@@ -124,7 +138,7 @@ func TestIntegrationTestsDefaultSettings(t *testing.T) {
 		s, err := New(info)
 		assert.Nil(err, "should not fail when calling New()")
 
-		msgStrings := []string{"hello", "", "This a more advanced log, with `$`@`!``(#*)'' and #1!           ", "1234567890"}
+		msgStrings := []string{"hello", "", "This a more 'advanced' log, with `$`@`!``(#*)'' and #1!           ", "1234567890"}
 
 		var msg *logger.Message
 		for _, msgString := range msgStrings {
@@ -138,8 +152,7 @@ func TestIntegrationTestsDefaultSettings(t *testing.T) {
 
 		expectedMessageCount := len(msgStrings)
 		assert.Equal(expectedMessageCount, len(messages), "should have received %d logs", expectedMessageCount)
-		for i := 0; i < expectedMessageCount; i++ {
-			// assert.Equal(msgStrings[i], messages[i], "message is incorrect")
+		for i := 0; i < len(messages); i++ {
 			assert.Contains(messages[i], "\"" + msgStrings[i] + "\"", "message should contain message string")
 		}
 
@@ -160,7 +173,7 @@ func TestIntegrationTestsDefaultSettings(t *testing.T) {
 		s, err := New(info)
 		assert.Nil(err, "should not fail when calling New()")
 
-		msgStrings := []string{"hello", "", "This a more advanced log, with `$`@`!``(#*)'' and #1!           "}
+		msgStrings := []string{"hello", "", "This a more 'advanced' log, with `$`@`!``(#*)'' and #1!           "}
 
 		logrusErrors := captureOutput(func() {
 			for _, msgString := range msgStrings {
